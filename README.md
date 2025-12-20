@@ -131,3 +131,27 @@ RAG Агент поиска статей и работы с ними
 *   **Эмбеддинги:** `gigachat-embedder`
 *   **LLM:** `GigaChat-Max`
 *   **Оркестрация:** `docker-compose` для локальной разработки и первого деплоя.
+
+## Структура проекта
+
+```
+document-agent-project/
+├── docker-compose.yml          # Сборка проекта
+├── .env                        # Общие переменные окружения
+├── .env.agent                  # Переменные для агента
+├── .env.bot                    # Переменные для бота
+├── agent-service/              # Сервис агента
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/                    # Сорс код приложения
+├── tg-bot-service/             # Telegram бот
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/                    # Сорс код приложения
+├── data/                       # Данные для RAG
+│   └── documents/
+├── scripts/                    # Вспомогательные скрипты
+│   ├── init-db.py             # Инициализация Qdrant
+│   └── load-documents.py      # Загрузка документов в RAG
+└── logs/                       # Логи (том для Docker)
+```
