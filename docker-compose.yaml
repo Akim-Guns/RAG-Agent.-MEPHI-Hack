@@ -41,6 +41,23 @@ services:
       - "8000:8000"
     networks:
       - agent-network
+  # Сервис tg-бота
+  tg-bot-service:
+    build: ./tg_bot_service
+    container_name: tg-bot-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - AGENT_SERVICE_URL=${AGENT_SERVICE_URL}
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-3600}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - agent-network
+    depends_on:
+      - agent-service
 
 # Тома для постоянного хранения данных
 volumes:

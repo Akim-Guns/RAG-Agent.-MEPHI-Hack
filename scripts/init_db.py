@@ -10,7 +10,7 @@ from qdrant_client.models import VectorParams, Distance
 # Настройки из переменных окружения
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "documents")
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "habr_articles")
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", "384"))
 
 

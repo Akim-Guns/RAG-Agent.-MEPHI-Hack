@@ -25,7 +25,7 @@ elif not os.environ.get("GIGACHAT_CREDENTIALS"):
     os.environ["GIGACHAT_CREDENTIALS"] = credentials
 
 # Настройки
-DATA_PATH = "../data/qdrant"
+DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "qdrant")
 QDRANT_URL = "localhost"
 QDRANT_PORT = 6333
 COLLECTION_NAME = "habr_articles"
@@ -88,7 +88,6 @@ def process_documents():
 
     return langchain_documents
 
-
 def collection_exists(client, collection_name):
     """Проверить, существует ли коллекция"""
     try:
@@ -132,15 +131,46 @@ def main():
                 model='EmbeddingsGigaR'
             )
 
-            qdrant = QdrantVectorStore.from_existing_collection(
-                embedding=embeddings_model,
-                collection_name=COLLECTION_NAME,
-                url=f"http://{QDRANT_URL}:{QDRANT_PORT}"
-            )
+            try:
+                qdrant = QdrantVectorStore.from_existing_collection(
+                    embedding=embeddings_model,
+                    collection_name=COLLECTION_NAME,
+                    url=f"http://{QDRANT_URL}:{QDRANT_PORT}"
+                )
 
-            # Получаем информацию о коллекции
-            collection_info = client.get_collection(COLLECTION_NAME)
-            print(f"📊 Коллекция содержит {collection_info.points_count} документов")
+                # Получаем информацию о коллекции
+                collection_info = client.get_collection(COLLECTION_NAME)
+                print(f"📊 Коллекция содержит {collection_info.points_count} документов")
+
+            except Exception as e:
+                if "dimensions" in str(e).lower() and ("2560" in str(e) or "384" in str(e)):
+                    print(f"⚠️  Несовпадение размерностей эмбеддингов: {e}")
+                    print("🔄 Пересоздаю коллекцию с новыми эмбеддингами...")
+                    
+                    # Удаляем старую коллекцию
+                    client.delete_collection(COLLECTION_NAME)
+                    print(f"🗑️  Удалена старая коллекция '{COLLECTION_NAME}'")
+                    
+                    # Создаем новую коллекцию
+                    documents = process_documents()
+                    if not documents:
+                        print("⚠️ Не найдено документов для обработки")
+                        return
+
+                    print(f"📊 Найдено {len(documents)} чанков для загрузки")
+                    print("🧠 Инициализация GigaChat Embeddings")
+                    
+                    qdrant = QdrantVectorStore.from_documents(
+                        documents=documents,
+                        embedding=embeddings_model,
+                        url=f"http://localhost:6333",
+                        collection_name=COLLECTION_NAME,
+                        force_recreate=True
+                    )
+                    
+                    print(f"✅ Успешно пересоздана коллекция '{COLLECTION_NAME}' с {len(documents)} чанками")
+                else:
+                    raise e
 
         else:
             print(f"📝 Коллекция '{COLLECTION_NAME}' не найдена, создаем новую...")
