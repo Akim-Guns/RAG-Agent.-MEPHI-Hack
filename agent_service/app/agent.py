@@ -3,12 +3,13 @@ import datetime
 import uuid
 from typing import Optional
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_gigachat import GigaChat
 
 from app.graph.enums import StageEnum
 from app.graph.nodes import Graph
+from app.llm.tools.rag import Doc
 from app.models import AgentResponse
 from app.states import AgentState
 
@@ -33,13 +34,38 @@ class Agent:
         if not self.session_id:
             self.session_id = str(uuid.uuid4())
 
-        self.state = state
+        self.state: AgentState | None = state
         # Если state не передан, инициаилизируем новый
         if not self.state:
             self.state: AgentState = self.create_initial_state(
                 current_phrase=message,
                 session_id=self.session_id
             )
+        else:
+            if self.state["messages"]:
+                messages = []
+                for message in messages:
+                    match message["type"].lower():
+                        case "human":
+                            processed_message = HumanMessage(**message)
+                        case "ai":
+                            processed_message = HumanMessage(**message)
+                        case "tool":
+                            processed_message = ToolMessage(**message)
+                        case "system":
+                            processed_message = SystemMessage(**message)
+                        case _:
+                            raise ValueError("Unprocessable message found")
+                    messages.append(processed_message)
+                self.state["messages"] = messages
+
+
+            if self.state["documents"]:
+                self.state["documents"] = [Doc(**document) for document in self.state["documents"]]
+
+            self.state["task_to_planner"] = message
+            self.state["current_phrase"] = message
+            self.state["messages"].append(HumanMessage(content=message))
 
         self.graph = Graph(llm=gigachat)
         # компилируем граф
@@ -60,6 +86,10 @@ class Agent:
 
     @staticmethod
     def return_message_and_state_from_state(state: AgentState) -> tuple[AgentResponse, AgentState]:
+        state["next_action"] = None,
+        state["iteration"] = 0
+        state["current_plan"] = None
+        state["current_step"] = None
         if state["error"]:
             return (AgentResponse(
                 response="Во время обработки вашего запроса произошли технические неполадки. Пожалуйста, попробуйте перефразировать запрос.",

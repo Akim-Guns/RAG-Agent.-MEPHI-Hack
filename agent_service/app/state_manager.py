@@ -3,7 +3,7 @@ from typing import Optional
 from redis.asyncio import Redis
 from datetime import datetime
 
-from app.models import AgentState
+from app.states import AgentState
 from app.config import SETTINGS
 
 
@@ -45,9 +45,6 @@ class StateManager:
             data = await self.redis_client.get(f"agent_state:{session_id}")
             if data:
                 state_dict = json.loads(data)
-                # Конвертируем строки времени обратно в datetime
-                state_dict["created_at"] = datetime.fromisoformat(state_dict["created_at"])
-                state_dict["updated_at"] = datetime.fromisoformat(state_dict["updated_at"])
                 return AgentState(**state_dict)
         except Exception as e:
             print(f"Error getting state: {e}")
@@ -56,8 +53,14 @@ class StateManager:
     async def save_state(self, session_id: str, state: AgentState) -> bool:
         """Сохранить состояние агента"""
         try:
+            # Приводим модели данных к словарям
+            messages = [json.loads(message.model_dump_json()) for message in state["messages"]]
+            state["messages"] = messages
 
-            data = state
+            documents = [json.loads(document.model_dump_json()) for document in state["documents"]]
+            state["documents"] = documents
+
+            data = json.dumps(state)
 
             # Сохраняем с TTL
             await self.redis_client.setex(
