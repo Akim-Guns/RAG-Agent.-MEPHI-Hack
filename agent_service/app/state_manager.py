@@ -56,15 +56,8 @@ class StateManager:
     async def save_state(self, session_id: str, state: AgentState) -> bool:
         """Сохранить состояние агента"""
         try:
-            # Обновляем время изменения
-            state.updated_at = datetime.now()
 
-            # Конвертируем в словарь и сериализуем
-            state_dict = state.dict()
-            state_dict["created_at"] = state_dict["created_at"].isoformat()
-            state_dict["updated_at"] = state_dict["updated_at"].isoformat()
-
-            data = json.dumps(state_dict)
+            data = state
 
             # Сохраняем с TTL
             await self.redis_client.setex(
