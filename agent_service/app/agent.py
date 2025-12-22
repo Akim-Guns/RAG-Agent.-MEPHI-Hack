@@ -15,6 +15,10 @@ from app.states import AgentState
 
 from app.config import SETTINGS
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 
 class Agent:
 
@@ -76,7 +80,10 @@ class Agent:
         """Асинхронный запуск графа"""
         run_config = RunnableConfig(
             run_id=self.session_id,
-            configurable={"thread_id": self.session_id}
+            recursion_limit=100,
+            configurable={
+                "thread_id": self.session_id
+            }
         )
         state: AgentState =  await self.compiled.ainvoke(
             self.state, run_config
@@ -166,8 +173,6 @@ class Agent:
             # Данные графа
             next_stage=initial_stage
         )
-
-        print(agent_state)
 
         return agent_state
 

@@ -1,3 +1,4 @@
+import logging
 import traceback
 
 from langchain_core.documents import Document
@@ -40,17 +41,23 @@ async def rag_call(
     ) -> RagResult:
     """Вызов RAG для поиска релевантной информации"""
     try:
+        logging.info(
+            msg={"event": "Вызов RAG", "collection_name": collection_name, "rag_request": rag_request}
+        )
         embeddings = GigaChatEmbeddings(
             credentials=SETTINGS.GIGACHAT_CREDENTIALS,
             verify_ssl_certs=False,
             model=SETTINGS.EMBEDDING_MODEL
         )
-        print(SETTINGS.QDRANT_URL)
 
         qdrant = QdrantVectorStore.from_existing_collection(
             embedding=embeddings,
             collection_name=collection_name,
             url=SETTINGS.QDRANT_URL,
+        )
+
+        logging.info(
+            msg={"event": "Вызов RAG", "collection_name": collection_name, "rag_request": rag_request}
         )
 
         docs: list[Document] = await qdrant.asimilarity_search(

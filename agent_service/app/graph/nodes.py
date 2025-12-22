@@ -1,3 +1,5 @@
+import logging
+import traceback
 from typing import Any, Literal, Optional
 
 from gigachat.exceptions import GigaChatException
@@ -36,6 +38,7 @@ class Graph:
         graph.add_node(ReactEnum.FINAL, self.final_react_node)
         graph.add_node(NodesEnum.RAG_TOOL, self.rag_tool)
         graph.add_node(NodesEnum.RESPONSE, self.response_node)
+        graph.add_node(NodesEnum.ERROR, self.error_node)
 
         graph.set_entry_point(NodesEnum.ROUTER)
 
@@ -50,24 +53,28 @@ class Graph:
             tools: Optional[list] = None
     ) -> AIMessage:
         """вызов модели без Structured Output"""
-        llm = self.llm
-        if prompt:
-            prompt_template = PromptTemplate.from_template(prompt)
-            if tools:
-                llm = llm.bind_functions(tools)
-            chain = prompt_template | llm
-            future: AIMessage = await chain.ainvoke(data)
-            if future.response_metadata.get("finish_reason") == "blacklist":
-                raise BlackListException
-            return future
-        else:
+        try:
             llm = self.llm
-            if tools:
-                llm = llm.bind_tools(tools)
-            future: AIMessage = await llm.ainvoke(data)
-            if future.response_metadata.get("finish_reason") == "blacklist":
-                raise BlackListException
-            return future
+            if prompt:
+                prompt_template = PromptTemplate.from_template(prompt)
+                if tools:
+                    llm = llm.bind_functions(tools)
+                chain = prompt_template | llm
+                future: AIMessage = await chain.ainvoke(data)
+                if future.response_metadata.get("finish_reason") == "blacklist":
+                    raise BlackListException
+                return future
+            else:
+                llm = self.llm
+                if tools:
+                    llm = llm.bind_tools(tools)
+                future: AIMessage = await llm.ainvoke(data)
+                if future.response_metadata.get("finish_reason") == "blacklist":
+                    raise BlackListException
+                return future
+        except GigaChatException as e:
+            logging.error(msg={"node": None, "traceback": traceback.format_exc(), "error": e, "gigachat_exception": True})
+            raise e
 
     async def get_chain_with_structured_output(
             self,
@@ -103,6 +110,7 @@ class Graph:
             return parser.validate(raw)
 
         except GigaChatException as e:
+            logging.error(msg={"node": None, "traceback": traceback.format_exc(), "error": e, "gigachat_exception": True})
             raise e
 
     async def router_node(self, state: AgentState) -> Command[
@@ -115,6 +123,7 @@ class Graph:
 
         # Если агент отчитался, что закончил действовать, переходим к финальной стадии - формированию ответа
         if state.get("is_finished", False):
+            logging.info(msg={"node": NodesEnum.ROUTER, "to": NodesEnum.RESPONSE})
             return Command(
                 goto=NodesEnum.RESPONSE,
                 update={
@@ -124,6 +133,7 @@ class Graph:
 
         # Если превышен лимит итераций, необходимо сформировать ответ as-is
         if state["iteration"] >= self.config.max_iterations:
+            logging.info(msg={"node": NodesEnum.ROUTER, "to": NodesEnum.RESPONSE})
             return Command(
                 goto=NodesEnum.RESPONSE,
                 update={
@@ -133,10 +143,12 @@ class Graph:
             )
 
         if state["next_action"] and (state["next_action"] in NodesEnum.__members__.values() or state["next_action"] in ReactEnum.__members__.values()):
+            logging.info(msg={"node": NodesEnum.ROUTER, "routin": state["next_action"]})
             return Command(
                 goto=state["next_action"],
             )
         else:
+            logging.info(msg={"node": NodesEnum.ROUTER, "to": NodesEnum.PLANNER})
             return Command(
                 goto=NodesEnum.PLANNER
             )
@@ -181,46 +193,63 @@ class Graph:
             state["current_step"] = state["current_plan"].plan[0]
             state["next_action"] = state["current_step"].name
 
+            logging.info(msg={"node": NodesEnum.PLANNER, "message": plan})
+
             return Command(
                 goto=NodesEnum.ROUTER,
                 update={**state}
             )
 
         except Exception as e:
-            raise e
+            logging.error(msg={"node": NodesEnum.PLANNER, "traceback": traceback.format_exc(), "error": e})
+            return Command(
+                goto=NodesEnum.ERROR,
+                update={
+                    "error": str(e)
+                }
+            )
 
     async def reasoning_node(self, state: AgentState) -> Command[
         Literal[
             NodesEnum.ROUTER,
         ]
     ]:
-        current_plan = Plan(**state["current_plan"]) if state["current_plan"] and isinstance(state["current_plan"], dict) else state["current_plan"]
-        current_step = Step(**state["current_step"]) if state["current_step"] and isinstance(state["current_step"], dict) else state["current_step"]
-        task = current_step.task
-        current_iteration = state["iteration"]
+        try:
+            current_plan = Plan(**state["current_plan"]) if state["current_plan"] and isinstance(state["current_plan"], dict) else state["current_plan"]
+            current_step = Step(**state["current_step"]) if state["current_step"] and isinstance(state["current_step"], dict) else state["current_step"]
+            task = current_step.task
+            current_iteration = state["iteration"]
 
-        prompt = RagPrompts.reasoning_system_prompt
+            prompt = RagPrompts.reasoning_system_prompt
 
-        ai_message = await self.get_chain(
-            prompt=prompt,
-            data={
-                "messages": state["messages"],
-                "current_task": task,
-                "collections": COLLECTIONS
-            }
-        )
+            ai_message = await self.get_chain(
+                prompt=prompt,
+                data={
+                    "messages": state["messages"],
+                    "current_task": task,
+                    "collections": COLLECTIONS
+                }
+            )
 
-        current_step.status = StepStatusEnum.PENDING
-        state["messages"].append(ai_message)
-        state["current_step"] = current_step
-        state["next_action"] = NodesEnum.RETRIEVER
+            current_step.status = StepStatusEnum.PENDING
+            state["messages"].append(ai_message)
+            state["current_step"] = current_step
+            state["next_action"] = NodesEnum.RETRIEVER
 
-        print(ai_message)
+            logging.info(msg={"node": ReactEnum.THOUGHT, "message": ai_message})
 
-        return Command(
-            goto=NodesEnum.ROUTER,
-            update={**state}
-        )
+            return Command(
+                goto=NodesEnum.ROUTER,
+                update={**state}
+            )
+        except Exception as e:
+            logging.error(msg={"node": ReactEnum.THOUGHT, "traceback": traceback.format_exc(), "error": e})
+            return Command(
+                goto=NodesEnum.ERROR,
+                update={
+                    "error": str(e)
+                }
+            )
 
 
     async def retrieve_node(self, state: AgentState) -> Command[
@@ -229,56 +258,66 @@ class Graph:
         ]
     ]:
         """Поиск документов через RAG"""
+        try:
+            # Извлекаем вопросы для поиска
+            current_plan = Plan(**state["current_plan"]) if state["current_plan"] and isinstance(state["current_plan"], dict) else state["current_plan"]
+            current_step = Step(**state["current_step"]) if state["current_step"] and isinstance(state["current_step"], dict) else state["current_step"]
+            task = current_step.task
+            if current_step.status != StepStatusEnum.PENDING:
+                print("Мысль не найдена. Надо подумать.")
+                return Command(
+                    goto=NodesEnum.ROUTER,
+                    update={
+                        "next_action": ReactEnum.THOUGHT
+                    }
+                )
 
-        # Извлекаем вопросы для поиска
-        current_plan = Plan(**state["current_plan"]) if state["current_plan"] and isinstance(state["current_plan"], dict) else state["current_plan"]
-        current_step = Step(**state["current_step"]) if state["current_step"] and isinstance(state["current_step"], dict) else state["current_step"]
-        task = current_step.task
-        if current_step.status != StepStatusEnum.PENDING:
-            print("Мысль не найдена. Надо подумать.")
+            prompt = RagPrompts.retrieve_system_prompt
+
+            ai_message = await self.get_chain(
+                prompt=prompt,
+                data={
+                    "messages": state["messages"],
+                    "current_task": task,
+                    "collections": COLLECTIONS
+                },
+                tools=[rag_tool]
+            )
+
+            current_step.status = StepStatusEnum.PENDING
+            state["messages"].append(ai_message)
+            state["current_step"] = current_step
+
+            print(ai_message)
+
+            if ai_message.tool_calls:
+                return Command(
+                    goto=NodesEnum.RAG_TOOL,
+                    update={**state}
+                )
+
+            print("not a tool call")
+
+            state["next_action"] = ReactEnum.THOUGHT
+            if ai_message.content == "END":
+                state["next_action"] = ReactEnum.FINAL
+            state["iteration"] += 1
+
+            logging.info(msg={"node": NodesEnum.RETRIEVER, "message": ai_message})
+
             return Command(
                 goto=NodesEnum.ROUTER,
-                update={
-                    "next_action": ReactEnum.THOUGHT
-                }
-            )
-        current_iteration = state["iteration"]
-
-        prompt = RagPrompts.retrieve_system_prompt
-
-        ai_message = await self.get_chain(
-            prompt=prompt,
-            data={
-                "messages": state["messages"],
-                "current_task": task,
-                "collections": COLLECTIONS
-            },
-            tools=[rag_tool]
-        )
-
-        current_step.status = StepStatusEnum.PENDING
-        state["messages"].append(ai_message)
-        state["current_step"] = current_step
-
-        print(ai_message)
-
-        if ai_message.tool_calls:
-            return Command(
-                goto=NodesEnum.RAG_TOOL,
                 update={**state}
             )
 
-        print("not a tool call")
-
-        state["next_action"] = ReactEnum.THOUGHT
-        if ai_message.content == "END":
-            state["next_action"] = ReactEnum.FINAL
-        state["iteration"] += 1
-
-        return Command(
-            goto=NodesEnum.ROUTER,
-            update={**state}
-        )
+        except Exception as e:
+            logging.error(msg={"node": NodesEnum.RETRIEVER, "traceback": traceback.format_exc(), "error": e})
+            return Command(
+                goto=NodesEnum.ERROR,
+                update={
+                    "error": str(e)
+                }
+            )
 
     async def final_react_node(self, state: AgentState) -> Command[
         Literal[NodesEnum.ROUTER]
@@ -317,6 +356,7 @@ class Graph:
                 current_step.status = StepStatusEnum.SUCCESS
                 ai_message = AIMessage(content=rag_flow.answer)
                 current_step = current_plan.plan[-1]
+                logging.info(msg={"node": ReactEnum.FINAL, "message": ai_message})
                 return Command(
                     goto=NodesEnum.ROUTER,
                     update={
@@ -328,6 +368,7 @@ class Graph:
                 )
             else:
                 ai_message = AIMessage(content=rag_flow.corrections)
+                logging.info(msg={"node": ReactEnum.FINAL, "message": ai_message})
                 return Command(
                     goto=NodesEnum.ROUTER,
                     update={
@@ -336,47 +377,82 @@ class Graph:
                     }
                 )
         except Exception as e:
-            raise e
+            logging.error(msg={"node": ReactEnum.FINAL, "traceback": traceback.format_exc(), "error": e})
+            return Command(
+                goto=NodesEnum.ERROR,
+                update={
+                    "error": str(e)
+                }
+            )
 
     async def rag_tool(self, state: AgentState) -> Command[
         Literal[NodesEnum.RETRIEVER],
     ]:
-        tools_by_name = {tool.name: tool for tool in [rag_tool]}
-        result = []
-        observation = []
-        for tool_call in state["messages"][-1].tool_calls:
-            tool = tools_by_name[tool_call["name"]]
-            observation = await tool.ainvoke(tool_call["args"])
-            result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
-        return Command(
-            goto=NodesEnum.RETRIEVER,
-            update={
-                "messages": state["messages"] + result,
-                "sources": observation.documents
-            }
-        )
+        try:
+            tools_by_name = {tool.name: tool for tool in [rag_tool]}
+            result = []
+            observation = []
+            for tool_call in state["messages"][-1].tool_calls:
+                tool = tools_by_name[tool_call["name"]]
+                observation = await tool.ainvoke(tool_call["args"])
+                result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
+
+            logging.info(msg={"node": NodesEnum.RAG_TOOL, "message": result})
+            return Command(
+                goto=NodesEnum.RETRIEVER,
+                update={
+                    "messages": state["messages"] + result,
+                    "sources": observation.documents
+                }
+            )
+        except Exception as e:
+            logging.error(msg={"node": NodesEnum.RAG_TOOL, "traceback": traceback.format_exc(), "error": e})
+            return Command(
+                goto=NodesEnum.ERROR,
+                update={
+                    "error": str(e)
+                }
+            )
 
     async def response_node(self, state: AgentState) -> Command[
         Literal[StageEnum.END]
     ]:
-        print(state["messages"][-1].content)
-        ai_message = await self.get_chain(
-            prompt=ResponsePrompt.system_prompt,
-            data={
-                "question": state["current_phrase"],
-                "answer": state["final_answer"]
-            }
-        )
+        try:
+            ai_message = await self.get_chain(
+                prompt=ResponsePrompt.system_prompt,
+                data={
+                    "question": state["current_phrase"],
+                    "answer": state["final_answer"]
+                }
+            )
 
-        final_answer = state["final_answer"] + "\n\n" + ai_message.content if state["final_answer"] else ai_message.content
+            final_answer = state["final_answer"] + "\n\n" + ai_message.content if state["final_answer"] else ai_message.content
 
-        state["final_answer"] = final_answer
-        state["messages"].append(ai_message)
-        state["is_finished"] = True
+            state["final_answer"] = final_answer
+            state["messages"].append(ai_message)
+            state["is_finished"] = True
+
+            logging.info(msg={"node": NodesEnum.RESPONSE, "message": final_answer})
+
+            return Command(
+                goto=StageEnum.END,
+                update={**state}
+            )
+        except Exception as e:
+            logging.error(msg={"node": NodesEnum.RESPONSE, "traceback": traceback.format_exc(), "error": e})
+            return Command(
+                goto=NodesEnum.ERROR,
+                update={
+                    "error": str(e)
+                }
+            )
+
+    async def error_node(self, state: AgentState) -> Command[
+        Literal[StageEnum.END]
+    ]:
 
         return Command(
-            goto=StageEnum.END,
-            update={**state}
+            goto=StageEnum.END
         )
 
 

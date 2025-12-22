@@ -1,4 +1,5 @@
 import json
+import traceback
 from typing import Optional
 from redis.asyncio import Redis
 from datetime import datetime
@@ -54,10 +55,10 @@ class StateManager:
         """Сохранить состояние агента"""
         try:
             # Приводим модели данных к словарям
-            messages = [json.loads(message.model_dump_json()) for message in state["messages"]]
+            messages = [json.loads(message.model_dump_json()) for message in state.get("messages", [])]
             state["messages"] = messages
 
-            documents = [json.loads(document.model_dump_json()) for document in state["documents"]]
+            documents = [json.loads(document.model_dump_json()) for document in state.get("documents", [])]
             state["documents"] = documents
 
             data = json.dumps(state)
@@ -70,7 +71,7 @@ class StateManager:
             )
             return True
         except Exception as e:
-            print(f"Error saving state: {e}")
+            print(f"Error saving state: {e}, {traceback.format_exc()}")
             return False
 
     async def create_state(self, session_id: Optional[str] = None) -> tuple[str, AgentState]:
