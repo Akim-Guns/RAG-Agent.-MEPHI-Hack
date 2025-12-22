@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем исходный код
 COPY src/ ./src/
+COPY .env.bot ./.env.bot
 
 # Создаем папку для логов
 RUN mkdir -p logs

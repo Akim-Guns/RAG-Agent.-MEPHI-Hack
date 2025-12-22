@@ -43,15 +43,11 @@ services:
       - agent-network
   # Сервис tg-бота
   tg-bot-service:
-    build: ./tg_bot_service
+    build:
+      context: ./tg_bot_service
+      dockerfile: Dockerfile
     container_name: tg-bot-service
     restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - AGENT_SERVICE_URL=${AGENT_SERVICE_URL}
-      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-3600}
     volumes:
       - ./logs:/app/logs
     networks:
