@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-import redis.asyncio as redis
+import redis
 from datetime import datetime
 
 from app.models import AgentState
@@ -16,10 +16,9 @@ class StateManager:
     async def connect(self):
         """Подключиться к Redis"""
         try:
-            self.redis_client = redis.from_url(
-                SETTINGS.REDIS_URL,
-                password=SETTINGS.REDIS_PASSWORD,
-                db=SETTINGS.REDIS_DB,
+            self.redis_client = redis.Redis(
+                host='localhost', port=6379,
+                db=0,
                 decode_responses=True
             )
             await self.redis_client.ping()
