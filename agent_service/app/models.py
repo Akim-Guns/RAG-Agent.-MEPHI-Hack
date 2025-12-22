@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from app.llm.tools.rag import Doc
+
 
 # Запросы
 class AgentRequest(BaseModel):
@@ -36,9 +38,9 @@ class RAGResponse(BaseModel):
 class AgentResponse(BaseModel):
     """Ответ от агента"""
     response: str = Field(..., description="Текст ответа")
-    sources: List[str] = Field(default_factory=list, description="Источники информации")
+    sources: list[Doc] = Field(default_factory=list, description="Источники информации")
     session_id: str = Field(..., description="ID сессии")
-    used_tools: List[str] = Field(default_factory=list, description="Использованные инструменты")
+    is_error: bool = Field(description="Случилась ли ошибка")
 
 
 # Состояние агента

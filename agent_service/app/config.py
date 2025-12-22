@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # LLM (пример для OpenAI)
     GIGACHAT_CREDENTIALS: str = os.getenv("GIGACHAT_CREDENTIALS", None)
     MODEL: str = os.getenv("MODEL", None)
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", None)
 
     # Агент
     AGENT_MAX_ITERATIONS: int = os.getenv("AGENT_MAX_ITERATIONS", None)

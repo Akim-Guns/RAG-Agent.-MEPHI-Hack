@@ -4,18 +4,18 @@ from fastapi.responses import JSONResponse
 import time
 import uuid
 
-from config import settings
-from models import AgentRequest, AgentResponse, RAGRequest, RAGResponse
-from state_manager import state_manager
-from agent import Agent
-from rag_client import rag_client
+from app.config import SETTINGS
+from app.models import AgentRequest, AgentResponse
+from app.state_manager import state_manager
+from app.agent import Agent
+from app.rag_client import rag_client
 
 # Создаем приложение
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None
+    title=SETTINGS.APP_NAME,
+    version=SETTINGS.APP_VERSION,
+    docs_url="/docs" if SETTINGS.DEBUG else None,
+    redoc_url="/redoc" if SETTINGS.DEBUG else None
 )
 
 # CORS middleware
@@ -67,36 +67,20 @@ async def invoke_agent(
         if not state:
             session_id, state = await state_manager.create_state(session_id)
 
-        # Обрабатываем запрос агентом
-        result = await Agent.process(
-            query=request.query,
-            state=state
+        agent = Agent(
+            message=request.query,
+            state=state,
+            session_id=session_id
         )
+        response_model, new_state = await agent.invoke()
 
         # Сохраняем обновленное состояние
-        await state_manager.save_state(session_id, state)
+        await state_manager.save_state(session_id, new_state)
 
-        return AgentResponse(
-            response=result["response"],
-            sources=result.get("sources", []),
-            session_id=session_id,
-            used_tools=result.get("used_tools", [])
-        )
+        return response_model
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
-
-
-@app.post("/rag/search", response_model=RAGResponse)
-async def search_documents(request: RAGRequest):
-    """
-    Поиск по векторной БД (внутренний эндпоинт)
-    """
-    try:
-        response = await rag_client.search(request)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"RAG search error: {str(e)}")
 
 
 @app.post("/session/reset")
@@ -119,8 +103,7 @@ async def health_check():
         "timestamp": time.time(),
         "services": {
             "redis": False,
-            "qdrant": False,
-            "llm": Agent.llm_client is not None
+            "qdrant": False
         }
     }
 
@@ -148,16 +131,10 @@ async def health_check():
 @app.on_event("startup")
 async def startup_event():
     """Инициализация при запуске"""
-    print(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    print(f"🚀 Starting {SETTINGS.APP_NAME} v{SETTINGS.APP_VERSION}")
 
     # Подключаемся к Redis
     await state_manager.connect()
-
-    # Подключаемся к Qdrant
-    await rag_client.connect()
-
-    # Инициализируем агента
-    await Agent.connect()
 
     print("✅ All services initialized")
 
@@ -190,8 +167,8 @@ async def general_exception_handler(request, exc):
 @app.get("/")
 async def root():
     return {
-        "service": settings.APP_NAME,
-        "version": settings.APP_VERSION,
+        "service": SETTINGS.APP_NAME,
+        "version": SETTINGS.APP_VERSION,
         "endpoints": {
             "POST /invoke": "Interact with the agent_service",
             "POST /rag/search": "Search documents (internal)",

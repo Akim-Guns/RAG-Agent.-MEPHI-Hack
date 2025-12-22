@@ -1,11 +1,10 @@
 import json
-import asyncio
 from typing import Optional
 import redis.asyncio as redis
 from datetime import datetime
 
-from models import AgentState
-from config import settings
+from app.models import AgentState
+from app.config import SETTINGS
 
 
 class StateManager:
@@ -17,10 +16,10 @@ class StateManager:
     async def connect(self):
         """Подключиться к Redis"""
         try:
-            self.redis_client = await redis.from_url(
-                settings.REDIS_URL,
-                password=settings.REDIS_PASSWORD,
-                db=settings.REDIS_DB,
+            self.redis_client = redis.from_url(
+                SETTINGS.REDIS_URL,
+                password=SETTINGS.REDIS_PASSWORD,
+                db=SETTINGS.REDIS_DB,
                 decode_responses=True
             )
             await self.redis_client.ping()
@@ -71,7 +70,7 @@ class StateManager:
             # Сохраняем с TTL
             await self.redis_client.setex(
                 f"agent_state:{session_id}",
-                settings.SESSION_TTL,
+                SETTINGS.SESSION_TTL,
                 data
             )
             return True
