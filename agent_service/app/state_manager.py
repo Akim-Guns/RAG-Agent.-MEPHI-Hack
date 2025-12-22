@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-import redis
+from redis.asyncio import Redis
 from datetime import datetime
 
 from app.models import AgentState
@@ -14,14 +14,14 @@ class StateManager:
         self.redis_client = None
 
     async def connect(self):
-        """Подключиться к Redis"""
         try:
-            self.redis_client = redis.Redis(
-                host='localhost', port=6379,
-                db=0,
-                decode_responses=True
+            self.redis_client = Redis.from_url(
+                SETTINGS.REDIS_URL,  # Используем URL из конфига
+                db=SETTINGS.REDIS_DB,
+                decode_responses=True,
+                health_check_interval=30  # Автоматическая проверка соединения
             )
-            await self.redis_client.ping()
+            await self.redis_client.ping()  # Асинхронная проверка
             print("✓ Connected to Redis")
         except Exception as e:
             print(f"✗ Redis connection error: {e}")

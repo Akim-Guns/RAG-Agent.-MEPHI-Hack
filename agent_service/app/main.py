@@ -1,3 +1,5 @@
+import traceback
+
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -69,7 +71,7 @@ async def invoke_agent(
 
         agent = Agent(
             message=request.query,
-            state=state,
+            state=None,
             session_id=session_id
         )
         response_model, new_state = await agent.invoke()
@@ -80,7 +82,7 @@ async def invoke_agent(
         return response_model
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}, trace: {traceback.format_exc()}")
 
 
 @app.post("/session/reset")
@@ -109,9 +111,10 @@ async def health_check():
 
     # Проверяем Redis
     try:
-        await state_manager.redis_client.ping()
+        await state_manager.redis_client.ping()  # Асинхронный вызов
         status["services"]["redis"] = True
-    except:
+    except Exception as e:
+        print(f"Redis health check failed: {e}")
         status["services"]["redis"] = False
 
     # Проверяем Qdrant

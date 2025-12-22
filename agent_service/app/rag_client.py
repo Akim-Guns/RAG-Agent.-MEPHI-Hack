@@ -1,9 +1,4 @@
-from typing import List, Optional
-from qdrant_client import QdrantClient, models
-from qdrant_client.models import PointStruct, Distance, VectorParams
-import numpy as np
-
-from app.models import Document, RAGRequest, RAGResponse
+from typing import Optional
 from app.config import SETTINGS
 
 from qdrant_client import QdrantClient

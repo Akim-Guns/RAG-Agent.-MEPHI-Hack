@@ -347,7 +347,7 @@ class Graph:
         for tool_call in state["messages"][-1].tool_calls:
             tool = tools_by_name[tool_call["name"]]
             observation = await tool.ainvoke(tool_call["args"])
-            result.append(ToolMessage(contnet=observation, tool_call_id=tool_call["id"]))
+            result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
         return Command(
             goto=NodesEnum.RETRIEVER,
             update={
@@ -375,7 +375,7 @@ class Graph:
         state["is_finished"] = True
 
         return Command(
-            goto=NodesEnum.END,
+            goto=StageEnum.END,
             update={**state}
         )
 

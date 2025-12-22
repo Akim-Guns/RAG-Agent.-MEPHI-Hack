@@ -1,7 +1,5 @@
-# Здесь будет реакт агент на lang graph
 import asyncio
 import datetime
-import os
 import uuid
 from typing import Optional
 
@@ -13,13 +11,8 @@ from app.graph.enums import StageEnum
 from app.graph.nodes import Graph
 from app.models import AgentResponse
 from app.states import AgentState
-from app.utils import init_new_state
 
 from app.config import SETTINGS
-
-import logging
-
-# logging.basicConfig(level=logging.DEBUG)
 
 
 class Agent:
@@ -65,7 +58,8 @@ class Agent:
 
         return self.return_message_and_state_from_state(state)
 
-    def return_message_and_state_from_state(self, state: AgentState) -> tuple[AgentResponse, AgentState]:
+    @staticmethod
+    def return_message_and_state_from_state(state: AgentState) -> tuple[AgentResponse, AgentState]:
         if state["error"]:
             return (AgentResponse(
                 response="Во время обработки вашего запроса произошли технические неполадки. Пожалуйста, попробуйте перефразировать запрос.",
@@ -128,13 +122,10 @@ class Agent:
 
             # Инструменты и результаты
             next_action=None,
-            action_input=None,
-            tool_results=[],
             documents=[],
 
             # Финальный результат
             final_answer=None,
-            sources=[],
             is_finished=False,
 
             # Метаданные
