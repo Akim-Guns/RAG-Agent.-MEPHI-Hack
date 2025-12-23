@@ -11,7 +11,7 @@ class AgentClient:
     
     def __init__(self):
         self.base_url = settings.AGENT_SERVICE_URL
-        self.timeout = httpx.Timeout(30.0)
+        self.timeout = httpx.Timeout(120.0)
         
     async def invoke(self, query: str, session_id: str) -> Dict[str, Any]:
         """
