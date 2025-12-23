@@ -48,27 +48,23 @@ RAG Агент поиска статей и работы с ними
             2.  **Вызов логики агента:** Передать `query` и `state` (историю) в `ReAct Engine`.
             3.  **Сохранение состояния:** Обновленное состояние (с добавленным новым взаимодействием) сохранить обратно в кэш. **Установить/обновить TTL (Time-To-Live) для ключа session_id на 10 минут**.
             4.  **Ответ:** Вернуть клиенту (боту) финальный ответ агента в формате `{"response": "текст с ответом и цитатами"}`.
-    *   `POST /rag/search` (внутренний, но публичный для сервиса)
-        *   **Вход:** Тело `{"index": "название_коллекции", "query": "строка запроса", "limit": 5}`.
-        *   **Логика:** Вызвать клиент Qdrant и вернуть результаты.
-        *   **Ответ:** `{"results": [{"id": "...", "text": "кусок текста", "metadata": {"source": "file.pdf", "page": 1}, "score": 0.95}, ...]}`.
-2.  **Модуль состояний (State Manager):**
-    *   Реализовать key-value хранилище для состояния сессии.
-    *   **Для MVP:** Использовать `Redis` с сериализацией JSON.
-    *   **Ключ:** `session:<session_id>` (например, `session:tg_12345_...`).
-    *   **Значение (схема):**
-        ```json
-        {
-          "history": [
-            {"role": "user", "content": "Что такое ML?"},
-            {"role": "assistant", "content": "ML, или машинное обучение, это...", "sources": [...], "used_tools": [...]}
-          ],
-          "created_at": "2023-...",
-          "updated_at": "2023-..."
-        }
-        ```
-    *   Реализовать автоматическое удаление ключей через 10 минут без активности (TTL).
-3.  **ReAct Engine (Core Agent):**
+2. **Модуль состояний (State Manager):**
+   *   Реализовать key-value хранилище для состояния сессии.
+   *   **Для MVP:** Использовать `Redis` с сериализацией JSON.
+   *   **Ключ:** `session:<session_id>` (например, `session:tg_12345_...`).
+   *   **Значение (схема):**
+       ```json
+       {
+         "history": [
+           {"role": "user", "content": "Что такое ML?"},
+           {"role": "assistant", "content": "ML, или машинное обучение, это...", "sources": [...], "used_tools": [...]}
+         ],
+         "created_at": "2023-...",
+         "updated_at": "2023-..."
+       }
+       ```
+   *   Реализовать автоматическое удаление ключей через 10 минут без активности (TTL).
+3. **ReAct Engine (Core Agent):**
     *   Использовать библиотеку `langchain` или `llama-index` для каркаса агента.
     *   Реализовать агента с `ReAct` подходом (Мысли -> Действие -> Наблюдение).
     *   **Инструменты (Tools), которые должен уметь вызывать агент:**
@@ -154,4 +150,62 @@ document-agent-project/
 │   ├── init-db.py             # Инициализация Qdrant
 │   └── load-documents.py      # Загрузка документов в RAG
 └── logs/                       # Логи (том для Docker)
+```
+
+## Инструкция по запуску проекта
+
+### Пререквизиты:
+- docker + docker-compose
+
+### Инструкция:
+1. Необходимо склонировать данный репозиторий.
+    
+   `git clone git@github.com:Akim-Guns/RAG-Agent.-MEPHI-Hack.git`, если имеются ssh ключи
+   
+   `git clone https://github.com/Akim-Guns/RAG-Agent.-MEPHI-Hack.git`, если ssh ключей нет
+2. В разделе agent-service создать файл `.env.agent`
+3. В разделе tg-bot-service создать файл `.env.bot`
+4. Запустить сборку через docker-compose
+   
+    `docker-compose up --build -d`
+5. В интерфейсе Telegram перейти в бота, для которого зарегистрирован токен и начать общение.
+
+### Наполнение файлов окружения
+
+#### .env.agent
+Пример:
+```
+# FastAPI
+DEBUG=true
+
+# Redis
+REDIS_URL=redis://redis:6379
+REDIS_PASSWORD=ABOBA
+REDIS_DB=0
+SESSION_TTL=600
+
+# Qdrant (не менять)
+QDRANT_URL=http://qdrant:6333
+# Не используются в данном билде
+QDRANT_API_KEY=
+QDRANT_COLLECTION=documents
+
+# LLM
+# Здесь ваш токен для GigaChatApi
+GIGACHAT_CREDENTIALS=
+MODEL=GigaChat-2-Max
+EMBEDDING_MODEL=EmbeddingsGigaR
+
+# Агент
+# Количество итераций в ReAct модуле агента
+AGENT_MAX_ITERATIONS=5
+# Максимальное количество токенов не используется в данном билде
+AGENT_MAX_TOKENS=4000
+```
+
+#### .env.bot
+Пример:
+```
+# Token вашего бота в Telegram
+TELEGRAM_TOKEN=
 ```
